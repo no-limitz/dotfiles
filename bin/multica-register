@@ -15,7 +15,7 @@
 #   --ssh            with --repo: register the git@host:owner/name.git form of an https origin
 #   --agent [NAME]   also create an agent on this machine's omp runtime, so issues can
 #                    be assigned to it (default name: omp-<runtime name>)
-#   --model ID       with --agent: the agent's model (default litellm/nolimitz/agent,
+#   --model ID       with --agent: the agent's model (default litellm/nolimitz/coder,
 #                    or $MULTICA_AGENT_MODEL)
 #   --profile NAME   use a separate multica profile (isolated config and login)
 #
@@ -31,7 +31,7 @@ SERVER="${MULTICA_SERVER_URL:-https://multica.nolimitz.io}"
 MARKER="$HOME/.multica-enabled"
 MIN_VERSION="0.4.22"   # first release with the omp runtime
 ACTION=register NAME="" PROFILE="" REPO=0 REPO_TARGET="" SSH_FORM=0
-AGENT=0 AGENT_NAME="" MODEL="${MULTICA_AGENT_MODEL:-litellm/nolimitz/agent}"
+AGENT=0 AGENT_NAME="" MODEL="${MULTICA_AGENT_MODEL:-litellm/nolimitz/coder}"
 
 die() { printf 'multica-register: %s\n' "$*" >&2; exit 1; }
 say() { printf '%s\n' "$*"; }
