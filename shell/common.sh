@@ -62,6 +62,17 @@ fi
 # --- functions ----------------------------------------------------------------
 mkcd() { mkdir -p -- "$1" && cd -- "$1"; }
 
+# --- GitHub sign-in hint -------------------------------------------------------
+# One line, only while there is no GitHub credential. File checks only: `gh auth
+# status` calls the API and would slow every new shell. Exported so nested shells
+# stay quiet.
+if [ -z "${DOTFILES_GH_HINTED:-}" ] && command -v ghrepo >/dev/null 2>&1 \
+   && [ -z "${GH_TOKEN:-}${GITHUB_TOKEN:-}" ] && [ ! -s "$HOME/.git-credentials" ] \
+   && ! grep -qs 'github.com' "${XDG_CONFIG_HOME:-$HOME/.config}/gh/hosts.yml"; then
+  export DOTFILES_GH_HINTED=1
+  printf 'Not signed in to GitHub. Run `ghrepo` to sign in and clone a repo.\n'
+fi
+
 # --- machine-specific / private ----------------------------------------------
 # Not tracked: work paths, tokens, per-host tweaks.
 [ -f "$HOME/.shell.local" ] && . "$HOME/.shell.local"

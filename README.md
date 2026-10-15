@@ -58,3 +58,6 @@ Sign-in is `gh auth login --web` (device code), so it works headless: open the p
 enter the code. It then runs `gh auth setup-git`, so `git` over https uses gh's credentials and no token is
 written to disk. Repos clone into `~/projects` (`GHREPO_DIR` to change), and it offers to start `omp` there.
 Uses `fzf` for picking if installed, otherwise a numbered menu with text filtering.
+
+While no GitHub credential exists (no `~/.config/gh/hosts.yml` entry, `~/.git-credentials` or token env var), new
+interactive shells print a one-line hint to run `ghrepo`. It is a file check only, so it adds no startup delay.
