@@ -73,6 +73,15 @@ if [ -z "${DOTFILES_GH_HINTED:-}" ] && command -v ghrepo >/dev/null 2>&1 \
   printf 'Not signed in to GitHub. Run `ghrepo` to sign in and clone a repo.\n'
 fi
 
+# --- Multica runtime hint ------------------------------------------------------
+# One line, only until `multica-register` has run here (it writes ~/.multica-enabled;
+# `multica-register --disable` removes it). File check only, so new shells stay fast.
+if [ -z "${DOTFILES_MULTICA_HINTED:-}" ] && command -v multica-register >/dev/null 2>&1 \
+   && [ ! -e "$HOME/.multica-enabled" ]; then
+  export DOTFILES_MULTICA_HINTED=1
+  printf 'Not registered with Multica. Run `multica-register` to let Multica run agents here.\n'
+fi
+
 # --- machine-specific / private ----------------------------------------------
 # Not tracked: work paths, tokens, per-host tweaks.
 [ -f "$HOME/.shell.local" ] && . "$HOME/.shell.local"
