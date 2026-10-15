@@ -14,8 +14,10 @@
 #   --ssh            with --repo: register the git@host:owner/name.git form of an https origin
 #   --profile NAME   use a separate multica profile (isolated config and login)
 #
-# Sign-in, in order: MULTICA_NODE_TOKEN (no prompt); a pasted personal access token over
-# SSH or in Coder; browser OAuth on a desktop. Skipped if already signed in.
+# Install and connect are the official steps: the install.sh installer, then
+# `multica setup self-host --server-url URL --app-url URL` (browser sign-in, starts the
+# daemon). Headless (SSH or Coder) uses MULTICA_NODE_TOKEN, or a pasted personal access
+# token. Skipped if already signed in.
 # The daemon finds agents on PATH when it starts, so install them first (omp needs
 # multica >= 0.4.22, which this script enforces).
 set -uo pipefail
@@ -37,7 +39,7 @@ while [ $# -gt 0 ]; do
     --ssh)     SSH_FORM=1 ;;
     --repo)    REPO=1
                if [ $# -gt 1 ] && [ "${2#-}" = "$2" ]; then shift; REPO_TARGET="$1"; fi ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)         die "unknown argument: $1" ;;
   esac
   shift
@@ -51,16 +53,11 @@ cli_version() { multica version 2>/dev/null | awk 'NR == 1 { print $2 }'; }
 
 if ! command -v multica >/dev/null 2>&1; then
   say "multica CLI not found; installing."
-  if command -v brew >/dev/null 2>&1; then
-    brew install multica-ai/tap/multica || die "brew install failed"
-  else
-    mkdir -p "$HOME/.local/bin"
-    MULTICA_BIN_DIR="$HOME/.local/bin" bash -c \
-      "$(curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh)" \
-      || die "install failed"
-    export PATH="$HOME/.local/bin:$PATH"
-  fi
-  command -v multica >/dev/null 2>&1 || die "multica is still not on PATH"
+  # Official installer (uses Homebrew when present, else a release binary).
+  curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh | bash \
+    || die "install failed"
+  export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+  command -v multica >/dev/null 2>&1 || die "multica is still not on PATH; open a new shell and re-run"
 fi
 
 MC=(multica)
@@ -128,37 +125,9 @@ if [ "$ACTION" = disable ]; then
   exit 0
 fi
 
-# --- connect ------------------------------------------------------------------
-[ "$(config_value server_url)" = "$SERVER" ] || "${MC[@]}" config set server_url "$SERVER" >/dev/null \
-  || die "could not set server_url"
-[ "$(config_value app_url)" = "$SERVER" ] || "${MC[@]}" config set app_url "$SERVER" >/dev/null \
-  || die "could not set app_url"
-
-if signed_in; then
-  say "Already signed in to $SERVER."
-else
-  say "Signing in to $SERVER."
-  headless=0
-  if [ -n "${SSH_CONNECTION:-}${CODER_WORKSPACE_NAME:-}" ]; then
-    headless=1
-  elif [ "$(uname -s)" != "Darwin" ] && [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
-    headless=1
-  fi
-  if [ -n "${MULTICA_NODE_TOKEN:-}" ]; then
-    "${MC[@]}" login --token "$MULTICA_NODE_TOKEN" || die "login with MULTICA_NODE_TOKEN failed"
-  elif [ "$headless" = 1 ]; then
-    say "No browser here. Create a personal access token in the web app ($SERVER),"
-    say "then paste it below."
-    "${MC[@]}" login --token || die "login failed"
-  else
-    "${MC[@]}" login || die "login failed"
-  fi
-  signed_in || die "still not signed in"
-fi
-"${MC[@]}" auth status 2>&1 | sed -n '2p' | sed 's/^/  /'
-
 # --- agents -------------------------------------------------------------------
-# The daemon registers one runtime per agent CLI it finds on PATH at start.
+# The daemon registers one runtime per agent CLI it finds on PATH at start, and
+# `multica setup self-host` below starts it, so check this before connecting.
 found=""
 for c in omp claude codex opencode copilot pi; do
   command -v "$c" >/dev/null 2>&1 && found="$found $c"
@@ -175,6 +144,35 @@ case " $found " in
       version_ge "${ver:-0}" "$MIN_VERSION" || die "multica is still $ver; upgrade it and re-run"
     fi ;;
 esac
+
+# --- connect ------------------------------------------------------------------
+headless=0
+if [ -n "${SSH_CONNECTION:-}${CODER_WORKSPACE_NAME:-}" ]; then
+  headless=1
+elif [ "$(uname -s)" != "Darwin" ] && [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+  headless=1
+fi
+
+if signed_in && [ "$(config_value server_url)" = "$SERVER" ]; then
+  say "Already signed in to $SERVER."
+elif [ -z "${MULTICA_NODE_TOKEN:-}" ] && [ "$headless" = 0 ]; then
+  # Desktop: the standard flow. Opens a browser to sign in, then starts the daemon.
+  say "Connecting to $SERVER (a browser will open to sign in)."
+  "${MC[@]}" setup self-host --server-url "$SERVER" --app-url "$SERVER" || die "setup self-host failed"
+else
+  # No browser: set the server by hand and sign in with a token.
+  "${MC[@]}" config set server_url "$SERVER" >/dev/null || die "could not set server_url"
+  "${MC[@]}" config set app_url "$SERVER" >/dev/null || die "could not set app_url"
+  if [ -n "${MULTICA_NODE_TOKEN:-}" ]; then
+    "${MC[@]}" login --token "$MULTICA_NODE_TOKEN" || die "login with MULTICA_NODE_TOKEN failed"
+  else
+    say "No browser here. Create a personal access token in the web app ($SERVER),"
+    say "then paste it below."
+    "${MC[@]}" login --token || die "login failed"
+  fi
+fi
+signed_in || die "still not signed in"
+"${MC[@]}" auth status 2>&1 | sed -n '2p' | sed 's/^/  /'
 
 # --- daemon -------------------------------------------------------------------
 if daemon_running; then
