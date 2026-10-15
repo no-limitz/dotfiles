@@ -112,6 +112,29 @@ include_gitconfig() {
   rm -f "$tmp"
 }
 
+# login_reads_bashrc: bash login shells (coder ssh, the web terminal) read only
+# ~/.bash_profile, else ~/.profile, and never ~/.bashrc on their own. A fresh
+# workspace home has no skeleton files, so without this the bashrc block is
+# never reached in a real terminal. Skipped when the file already mentions
+# .bashrc (the usual skeleton snippet, or a previous run of this).
+login_reads_bashrc() {
+  local f="$HOME/.profile"
+  [ -f "$HOME/.bash_profile" ] && f="$HOME/.bash_profile"
+  if [ -f "$f" ] && grep -q '\.bashrc' "$f"; then
+    info "ok      $f reads ~/.bashrc"
+    return 0
+  fi
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '[dry-run] make %s source ~/.bashrc\n' "$f"
+    return 0
+  fi
+  {
+    printf '\n# >>> dotfiles >>>\n'
+    printf '[ -n "$BASH_VERSION" ] && [ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n'
+    printf '# <<< dotfiles <<<\n'
+  } >> "$f" && ok_msg "updated $f" || warn "could not update $f"
+}
+
 install_starship() {
   if command -v starship >/dev/null 2>&1 || [ -x "$HOME/.local/bin/starship" ]; then
     info "ok      starship"
@@ -145,6 +168,7 @@ run mkdir -p "$HOME/.vim/undo"
 include_gitconfig
 source_block "$HOME/.zshrc"  "$DOTFILES_DIR/shell/zshrc"
 source_block "$HOME/.bashrc" "$DOTFILES_DIR/shell/bashrc"
+login_reads_bashrc
 
 install_starship
 
