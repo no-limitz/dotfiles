@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# multica-register: connect the multica CLI to multica.nolimitz.io, then register
+# a repo (a "site") in the Multica workspace's repository registry.
+#
+#   multica-register                  connect, then register the git repo you are in
+#   multica-register PATH             ... register the repo at PATH
+#   multica-register git@host:o/n.git ... register that URL
+#
+# Options:
+#   --ssh            register the SSH form (git@host:owner/name.git) of an https
+#                    origin, matching how the existing registry entries are written
+#   --daemon         also start the local agent daemon (registers this machine
+#                    as a runtime)
+#   --profile NAME   use a separate multica profile (isolated config and login)
+#
+# Connecting is skipped when the CLI is already signed in to the right server.
+# Sign-in method, in order:
+#   MULTICA_NODE_TOKEN set  -> `multica login --token` with it, no prompt
+#   SSH / Coder / no GUI    -> prompts for a personal access token (mul_...);
+#                              create one in the Multica web app at $SERVER
+#   otherwise               -> browser OAuth
+#
+# The repo is added to the *default* workspace; check it with `multica workspace list`.
+set -uo pipefail
+
+SERVER="${MULTICA_SERVER_URL:-https://multica.nolimitz.io}"
+TARGET="" SSH_FORM=0 DAEMON=0 PROFILE=""
+
+die() { printf 'multica-register: %s\n' "$*" >&2; exit 1; }
+say() { printf '%s\n' "$*"; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --ssh)     SSH_FORM=1 ;;
+    --daemon)  DAEMON=1 ;;
+    --profile) shift; [ $# -gt 0 ] || die "--profile needs a name"; PROFILE="$1" ;;
+    -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*)        die "unknown option: $1" ;;
+    *)         [ -z "$TARGET" ] || die "only one repo at a time"; TARGET="$1" ;;
+  esac
+  shift
+done
+
+# --- CLI ----------------------------------------------------------------------
+if ! command -v multica >/dev/null 2>&1; then
+  say "multica CLI not found; installing."
+  if command -v brew >/dev/null 2>&1; then
+    brew install multica-ai/tap/multica || die "brew install failed"
+  else
+    mkdir -p "$HOME/.local/bin"
+    MULTICA_BIN_DIR="$HOME/.local/bin" bash -c \
+      "$(curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh)" \
+      || die "install failed"
+    export PATH="$HOME/.local/bin:$PATH"
+  fi
+  command -v multica >/dev/null 2>&1 || die "multica is still not on PATH"
+fi
+
+MC=(multica)
+[ -n "$PROFILE" ] && MC+=(--profile "$PROFILE")
+
+# --- connect ------------------------------------------------------------------
+# config_value KEY: value from `multica config show`, empty if unset.
+config_value() { "${MC[@]}" config show 2>/dev/null | awk -v k="$1:" '$1 == k { print $2 }'; }
+
+[ "$(config_value server_url)" = "$SERVER" ] || "${MC[@]}" config set server_url "$SERVER" >/dev/null \
+  || die "could not set server_url"
+[ "$(config_value app_url)" = "$SERVER" ] || "${MC[@]}" config set app_url "$SERVER" >/dev/null \
+  || die "could not set app_url"
+# `multica auth status` exits 0 even when signed out ("Not authenticated"), so
+# the exit code cannot be used: a signed-in status has a "User:" line.
+signed_in() {
+  local out
+  # auth status prints to stderr as well as stdout, so capture both.
+  out="$("${MC[@]}" auth status 2>&1)"
+  case "$out" in *$'\n'User:*|User:*) return 0 ;; *) return 1 ;; esac
+}
+
+if signed_in; then
+  say "Already signed in to $SERVER."
+else
+  say "Signing in to $SERVER."
+  headless=0
+  if [ -n "${SSH_CONNECTION:-}${CODER_WORKSPACE_NAME:-}" ]; then
+    headless=1
+  elif [ "$(uname -s)" != "Darwin" ] && [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+    headless=1
+  fi
+  if [ -n "${MULTICA_NODE_TOKEN:-}" ]; then
+    "${MC[@]}" login --token "$MULTICA_NODE_TOKEN" || die "login with MULTICA_NODE_TOKEN failed"
+  elif [ "$headless" = 1 ]; then
+    say "No browser here. Create a personal access token in the web app ($SERVER),"
+    say "then paste it below."
+    "${MC[@]}" login --token || die "login failed"
+  else
+    "${MC[@]}" login || die "login failed"
+  fi
+  signed_in || die "still not signed in"
+fi
+"${MC[@]}" auth status 2>&1 | sed 's/^/  /'
+
+if [ "$DAEMON" = 1 ]; then
+  # `multica daemon status` prints "Daemon: stopped" or "Daemon: running ...".
+  daemon_state="$("${MC[@]}" daemon status 2>&1 | head -n 1)"
+  if [ "${daemon_state#Daemon: running}" != "$daemon_state" ]; then
+    say "Daemon already running."
+  else
+    "${MC[@]}" daemon start || say "warning: daemon did not start"
+  fi
+fi
+
+# --- register the repo --------------------------------------------------------
+# Resolve what to register: a URL, or the origin remote of a git directory.
+url=""
+case "$TARGET" in
+  *://*|*@*:*) url="$TARGET" ;;
+  *)
+    dir="${TARGET:-.}"
+    [ -d "$dir" ] || die "not a directory: $dir"
+    if git -C "$dir" rev-parse --show-toplevel >/dev/null 2>&1; then
+      url="$(git -C "$dir" remote get-url origin 2>/dev/null)" \
+        || die "$(cd "$dir" && pwd) has no 'origin' remote"
+    elif [ -n "$TARGET" ]; then
+      die "$dir is not a git repository"
+    fi
+    ;;
+esac
+
+if [ -z "$url" ]; then
+  say "Connected. Not in a git repository, so nothing to register."
+  exit 0
+fi
+
+# https://host/o/n(.git) -> git@host:o/n.git
+if [ "$SSH_FORM" = 1 ]; then
+  case "$url" in
+    https://*|http://*) url="$(printf '%s' "${url#*://}" | sed -E 's#^([^/]+)/(.*)$#git@\1:\2#; s#(\.git)?$#.git#')" ;;
+  esac
+fi
+
+# norm URL: host/owner/name, so ssh and https forms of one repo compare equal.
+norm() {
+  printf '%s' "$1" | sed -E '
+    s#^[a-z+]+://##; s#^[^@/]+@##; s#:([^0-9])#/\1#; s#^([^/]+):[0-9]+/#\1/#; s#\.git/?$##; s#/$##' \
+    | tr '[:upper:]' '[:lower:]'
+}
+
+want="$(norm "$url")"
+existing="$("${MC[@]}" repo list --output json 2>/dev/null | grep -o '"url": *"[^"]*"' | sed -E 's/"url": *"([^"]*)"/\1/')"
+while IFS= read -r have; do
+  [ -n "$have" ] || continue
+  if [ "$(norm "$have")" = "$want" ]; then
+    say "Already registered: $have"
+    exit 0
+  fi
+done <<< "$existing"
+
+say "Registering $url"
+"${MC[@]}" repo add "$url" --output table || die "repo add failed"
+say "Registered in the default workspace."

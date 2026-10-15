@@ -23,7 +23,7 @@ Preview first with `./install.sh --dry-run`. Re-running is safe.
 | `~/.zshrc`, `~/.bashrc` | appends a marked block that sources `shell/zshrc` / `shell/bashrc` | Never replaces your file, so machine-specific lines and other tools' appends survive. |
 | `~/.gitconfig` | adds `[include]` of `git/gitconfig` at the **top** | Settings in `~/.gitconfig` still win; tools that run `git config --global` do not write into this repo. |
 | `~/.config/starship.toml`, `~/.config/git/ignore`, `~/.tmux.conf`, `~/.vimrc` | symlinks | An existing real file is moved to `~/.dotfiles_backup/<timestamp>/`. |
-| `ghrepo` | symlinked to `~/.local/bin/ghrepo` | GitHub sign-in + repo picker, see below. |
+| `bin/*` (`ghrepo`, `multica-register`) | symlinks in `~/.local/bin` | Helper commands, see below. |
 | starship | installed to `~/.local/bin` on Linux only | No sudo. On macOS use the Brewfile. |
 
 Starship is the only download: `--skip-deps` or `DOTFILES_SKIP_DEPS=1` skips it. The script always exits 0 so
@@ -61,3 +61,19 @@ Uses `fzf` for picking if installed, otherwise a numbered menu with text filteri
 
 While no GitHub credential exists (no `~/.config/gh/hosts.yml` entry, `~/.git-credentials` or token env var), new
 interactive shells print a one-line hint to run `ghrepo`. It is a file check only, so it adds no startup delay.
+
+## multica-register: connect to Multica and register a repo
+
+```bash
+multica-register                # connect to multica.nolimitz.io, register the git repo you are in
+multica-register ~/code/site    # ... a repo at a path
+multica-register git@github.com:no-limitz/site.git
+multica-register --ssh          # register the git@host:owner/name.git form of an https origin
+multica-register --daemon       # also start the local agent daemon (registers this machine as a runtime)
+```
+
+Skips sign-in when the CLI is already connected to the right server; installs the CLI if missing
+(brew on macOS, the official installer elsewhere). Sign-in uses `MULTICA_NODE_TOKEN` if set, a pasted personal
+access token over SSH or in a Coder workspace, and browser OAuth on a desktop. A repo already in the registry,
+in either its ssh or https form, is reported rather than added twice. Run outside a git repo it only connects.
+The repo goes into the default workspace (`multica workspace list`).
