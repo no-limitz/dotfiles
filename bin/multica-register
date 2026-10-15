@@ -133,7 +133,8 @@ show_runtimes() {
 
 # --- status / disable ---------------------------------------------------------
 if [ "$ACTION" = status ]; then
-  say "Server:  $(config_value server_url | sed "s/^\$/(not set)/")"
+  server="$(config_value server_url)"
+  say "Server:  ${server:-(not set)}"
   signed_in && "${MC[@]}" auth status 2>&1 | sed -n '2p' | sed 's/^/  /' || say "  not signed in"
   say "Daemon:  $("${MC[@]}" daemon status 2>&1 | head -n 1 | sed -E 's/^Daemon:[[:space:]]*//')"
   say "Autostart marker: $([ -f "$MARKER" ] && echo present || echo absent)"
