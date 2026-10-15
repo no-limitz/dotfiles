@@ -1,0 +1,22 @@
+# Global gitignore, linked to ~/.config/git/ignore.
+# Editor/OS/tool noise only. Nothing here may hide source: no `vendor`, `tmp*`,
+# `*.patch` or `*.diff`.
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors
+*.swp
+*.swo
+*~
+\#*\#
+.idea/
+
+# Local env files (committed templates like .env.example are unaffected)
+.env
+.env.local
+
+# AI tooling local state
+**/.claude/settings.local.json

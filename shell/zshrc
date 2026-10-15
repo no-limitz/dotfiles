@@ -1,0 +1,56 @@
+# Sourced from ~/.zshrc by install.sh. Plain zsh, no framework.
+[[ -o interactive ]] || return
+
+_dotfiles_dir="${${(%):-%x}:A:h}"
+source "$_dotfiles_dir/common.sh"
+
+# --- history ------------------------------------------------------------------
+HISTFILE="${HISTFILE:-$HOME/.zsh_history}"
+HISTSIZE=100000
+SAVEHIST=100000
+setopt EXTENDED_HISTORY SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE HIST_REDUCE_BLANKS
+
+# --- behavior -----------------------------------------------------------------
+setopt AUTO_CD AUTO_PUSHD PUSHD_IGNORE_DUPS INTERACTIVE_COMMENTS COMPLETE_IN_WORD
+unsetopt BEEP
+
+# Up/Down search history for the text already typed.
+autoload -U up-line-or-beginning-search down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+bindkey '^[[A' up-line-or-beginning-search
+bindkey '^[OA' up-line-or-beginning-search
+bindkey '^[[B' down-line-or-beginning-search
+bindkey '^[OB' down-line-or-beginning-search
+
+# --- completion ---------------------------------------------------------------
+# Skip if the machine's own zshrc already ran compinit (e.g. oh-my-zsh).
+if (( ! $+functions[compdef] )); then
+  autoload -Uz compinit
+  # Full security check once a day, cached dump otherwise. extendedglob is
+  # scoped to this function: enabling it globally would change `HEAD^` etc.
+  () {
+    setopt localoptions extendedglob
+    if [[ -n ${ZDOTDIR:-$HOME}/.zcompdump(#qN.mh+24) ]]; then compinit; else compinit -C; fi
+  }
+fi
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'   # case-insensitive
+
+# --- optional plugins ---------------------------------------------------------
+# Loaded only if installed (brew or distro package); syntax-highlighting last.
+for _p in zsh-autosuggestions zsh-syntax-highlighting; do
+  for _d in /opt/homebrew/share /usr/local/share /usr/share "$HOME/.local/share"; do
+    if [[ -f "$_d/$_p/$_p.zsh" ]]; then source "$_d/$_p/$_p.zsh"; break; fi
+  done
+done
+unset _p _d
+
+# --- prompt -------------------------------------------------------------------
+# STARSHIP_SHELL is exported, so a zsh started inside another starship shell
+# inherits it; check for this shell's own prompt hook instead.
+if command -v starship >/dev/null 2>&1 && (( ! $+functions[prompt_starship_precmd] )); then
+  eval "$(starship init zsh)"
+fi
+
+unset _dotfiles_dir

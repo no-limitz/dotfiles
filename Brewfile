@@ -1,0 +1,16 @@
+# macOS CLI tools the shell config assumes. Apply with: brew bundle --file=Brewfile
+# Linux workspaces get starship from install.sh and everything else from the image.
+brew "git"
+brew "git-lfs"
+brew "gh"
+brew "lazygit"
+brew "neovim"
+brew "ripgrep"
+brew "starship"
+brew "tmux"
+brew "zsh"
+brew "zsh-autosuggestions"
+brew "zsh-syntax-highlighting"
+brew "htop"
+brew "btop"
+brew "wget"

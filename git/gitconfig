@@ -1,0 +1,56 @@
+# Included from ~/.gitconfig by install.sh (placed first, so anything set in
+# ~/.gitconfig itself wins). Identity and credentials are deliberately absent:
+# Coder sets GIT_AUTHOR_*/GIT_COMMITTER_* and the git credential helper.
+
+[init]
+	defaultBranch = main
+
+[core]
+	autocrlf = input
+	excludesfile = ~/.config/git/ignore
+
+[color]
+	ui = auto
+
+[pull]
+	rebase = true
+
+[push]
+	default = simple
+	autoSetupRemote = true
+
+[fetch]
+	prune = true
+
+[rebase]
+	autoStash = true
+	autoSquash = true
+
+[merge]
+	conflictStyle = diff3
+
+[rerere]
+	enabled = true
+
+[diff]
+	algorithm = histogram
+	colorMoved = default
+	renames = copies
+
+[branch]
+	sort = -committerdate
+
+[tag]
+	sort = version:refname
+
+[alias]
+	co = checkout
+	sw = switch
+	br = branch
+	ci = commit
+	st = status -sb
+	unstage = reset HEAD --
+	last = log -1 HEAD
+	amend = commit --amend --no-edit
+	undo = reset --soft HEAD~1
+	tree = log --graph --oneline --all --decorate

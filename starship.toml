@@ -1,0 +1,72 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+add_newline = true
+command_timeout = 500
+
+# Multi-line prompt: directory/git on the first line, arrow + command on the second.
+# $hostname only renders over SSH (ssh_only default), so local shells stay short.
+format = """
+$hostname$directory$git_branch$git_status$python$nodejs$rust$golang$cmd_duration\
+$line_break\
+$character"""
+
+[cmd_duration]
+min_time = 3000
+format = "took [$duration]($style) "
+
+[directory]
+style = "bold cyan"
+truncation_length = 3
+truncate_to_repo = true
+format = "[$path]($style)[$read_only]($read_only_style) "
+
+[git_branch]
+symbol = "⌥"
+style = "bold yellow"
+format = "on [$symbol$branch]($style) "
+
+[git_status]
+style = "bold red"
+format = "([$all_status$ahead_behind]($style) )"
+conflicted = "🏳"
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
+up_to_date = "✓"
+untracked = "?"
+stashed = "\\$"
+modified = "!"
+staged = "+"
+renamed = "»"
+deleted = "✘"
+
+[character]
+success_symbol = "[|→](bold green)"
+error_symbol = "[|→](bold red)"
+
+[python]
+symbol = "🐍 "
+format = "via [$symbol$version]($style) "
+style = "bold yellow"
+
+[nodejs]
+symbol = "⬢ "
+format = "via [$symbol$version]($style) "
+style = "bold green"
+
+[golang]
+symbol = "🐹 "
+format = "via [$symbol$version]($style) "
+style = "bold cyan"
+
+[rust]
+symbol = "🦀 "
+format = "via [$symbol$version]($style) "
+style = "bold red"
+
+[aws]
+disabled = true
+[gcloud]
+disabled = true
+[package]
+disabled = true
