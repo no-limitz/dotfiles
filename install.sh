@@ -139,6 +139,7 @@ link "$DOTFILES_DIR/starship.toml" "$XDG_CONFIG_HOME/starship.toml"
 link "$DOTFILES_DIR/git/ignore"    "$XDG_CONFIG_HOME/git/ignore"
 link "$DOTFILES_DIR/tmux.conf"     "$HOME/.tmux.conf"
 link "$DOTFILES_DIR/vimrc"         "$HOME/.vimrc"
+link "$DOTFILES_DIR/bin/ghrepo"   "$HOME/.local/bin/ghrepo"
 run mkdir -p "$HOME/.vim/undo"
 
 include_gitconfig

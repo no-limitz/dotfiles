@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# ghrepo: sign in to GitHub if needed, then pick a repo and clone it.
+#
+#   ghrepo               sign in (first run), choose an owner, then a repo
+#   ghrepo OWNER/REPO    sign in (first run), clone that repo directly
+#
+# Clones into $GHREPO_DIR (default ~/projects). Uses fzf for picking when it is
+# installed, a numbered menu otherwise. Sign-in is gh's device-code flow, so it
+# works in a headless workspace: open the printed URL on any machine and enter
+# the code. Git is wired to gh's credentials (`gh auth setup-git`), so later
+# `git clone/pull/push` over https need no token on disk.
+set -uo pipefail
+
+HOST=github.com
+DEST_ROOT="${GHREPO_DIR:-$HOME/projects}"
+
+die() { printf 'ghrepo: %s\n' "$*" >&2; exit 1; }
+say() { printf '%s\n' "$*"; }
+
+command -v gh >/dev/null 2>&1 || die "gh is not installed"
+[ -t 0 ] && [ -t 1 ] || die "needs an interactive terminal"
+
+# --- sign in ------------------------------------------------------------------
+if [ -n "${GH_TOKEN:-}${GITHUB_TOKEN:-}" ]; then
+  say "Using the token from GH_TOKEN/GITHUB_TOKEN."
+elif ! gh auth status --hostname "$HOST" >/dev/null 2>&1; then
+  say "Not signed in to $HOST. Starting browser (device-code) login..."
+  gh auth login --hostname "$HOST" --git-protocol https --web --skip-ssh-key \
+    || die "login did not complete"
+fi
+gh auth status --hostname "$HOST" >/dev/null 2>&1 || die "still not signed in"
+
+# Idempotent: makes `git` use gh as the credential helper for $HOST.
+gh auth setup-git --hostname "$HOST" >/dev/null 2>&1 \
+  || say "warning: could not configure git credentials (gh auth setup-git)"
+
+me="$(gh api user --jq .login 2>/dev/null)" || die "cannot read your GitHub account"
+say "Signed in as $me."
+
+# --- choose ---------------------------------------------------------------------
+# pick PROMPT: choose one line from stdin; prints it. Empty output = cancelled.
+pick() {
+  local prompt="$1" lines=() line filter sel n i
+  # No mapfile: macOS ships bash 3.2.
+  while IFS= read -r line; do lines+=("$line"); done
+  [ "${#lines[@]}" -gt 0 ] || return 0
+  if command -v fzf >/dev/null 2>&1; then
+    printf '%s\n' "${lines[@]}" | fzf --prompt "$prompt> " --height 40% --reverse
+    return 0
+  fi
+  filter=""
+  while :; do
+    local shown=()
+    if [ -n "$filter" ]; then
+      for line in "${lines[@]}"; do
+        case "$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')" in
+          *"$(printf '%s' "$filter" | tr '[:upper:]' '[:lower:]')"*) shown+=("$line") ;;
+        esac
+      done
+    else
+      shown=("${lines[@]}")
+    fi
+    n="${#shown[@]}"
+    if [ "$n" -eq 0 ]; then
+      say "No match for '$filter'." >&2
+    else
+      i=0
+      for line in "${shown[@]:0:20}"; do i=$((i + 1)); printf '%3d) %s\n' "$i" "$line" >&2; done
+      [ "$n" -gt 20 ] && say "     ... $((n - 20)) more; type text to narrow the list" >&2
+    fi
+    # stdin carries the list, so the answer must come from the terminal.
+    read -r -p "$prompt [number, text to filter, q to quit]: " sel </dev/tty >&2 || return 0
+    case "$sel" in
+      q|Q) return 0 ;;
+      ''|*[!0-9]*) filter="$sel" ;;
+      *) if [ "$sel" -ge 1 ] && [ "$sel" -le "$n" ] && [ "$sel" -le 20 ]; then
+           printf '%s\n' "${shown[$((sel - 1))]}"
+           return 0
+         fi
+         say "Out of range." >&2 ;;
+    esac
+  done
+}
+
+repo="${1:-}"
+if [ -z "$repo" ]; then
+  owners="$( { echo "$me"; gh api user/orgs --paginate --jq '.[].login' 2>/dev/null; } | sort -fu)"
+  owner="$(printf '%s\n' "$owners" | pick "Owner")"
+  [ -n "$owner" ] || die "cancelled"
+
+  say "Loading repos for $owner..."
+  # gh sorts by most recently pushed.
+  list="$(gh repo list "$owner" --limit 300 \
+    --json nameWithOwner,isPrivate,description \
+    --jq '.[] | "\(.nameWithOwner)\t\(if .isPrivate then "private" else "public" end)\t\(.description // "")"')" \
+    || die "could not list repos for $owner"
+  [ -n "$list" ] || die "$owner has no repos visible to you"
+
+  choice="$(printf '%s\n' "$list" | pick "Repo")"
+  [ -n "$choice" ] || die "cancelled"
+  repo="${choice%%$'\t'*}"
+fi
+
+# --- clone ----------------------------------------------------------------------
+dest="$DEST_ROOT/${repo##*/}"
+mkdir -p "$DEST_ROOT" || die "cannot create $DEST_ROOT"
+if [ -d "$dest/.git" ]; then
+  say "Already cloned: $dest"
+else
+  [ ! -e "$dest" ] || die "$dest exists and is not a git repo"
+  gh repo clone "$repo" "$dest" || die "clone failed"
+fi
+
+say ""
+say "Ready: $dest"
+if command -v omp >/dev/null 2>&1; then
+  read -r -p "Start omp there? [y/N] " yn || exit 0
+  case "$yn" in y|Y|yes) cd "$dest" && exec omp ;; esac
+fi
+say "cd $dest"
