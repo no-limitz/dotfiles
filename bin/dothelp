@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# dothelp: cheat sheet for the commands these dotfiles add. Plain text, works offline.
+#
+#   dothelp           the whole sheet
+#   dothelp TOPIC     one section: start, repos, multica, omp, coder, git, shell
+#
+# Keep this in step with README.md when a helper gains or loses an option.
+set -uo pipefail
+
+sheet() {
+  case "$1" in
+  start) cat <<'EOF'
+FIRST STEPS ON A NEW CODER WORKSPACE
+  ghrepo                  sign in to GitHub (device code) and clone a repo into ~/projects
+  omp                     start the coding agent (models come from the LiteLLM gateway)
+  multica-register        let Multica run agents on this workspace (needs MULTICA_NODE_TOKEN
+                          or a personal access token from https://multica.nolimitz.io)
+  dothelp TOPIC           this sheet: start repos multica omp coder git shell
+EOF
+  ;;
+  repos) cat <<'EOF'
+GITHUB: ghrepo
+  ghrepo                  sign in (first run), pick an owner, then a repo, and clone it
+  ghrepo OWNER/REPO       sign in (first run) and clone that repo directly
+  GHREPO_DIR=DIR          clone somewhere other than ~/projects
+  Sign-in prints a URL and a code: open the URL on any device and enter the code.
+  Git over https then uses gh's credentials; no token is stored on disk.
+  Signed out? check with: gh auth status
+EOF
+  ;;
+  multica) cat <<'EOF'
+MULTICA: multica-register   (server: https://multica.nolimitz.io)
+  multica-register                     install the CLI, sign in, start the daemon: this machine
+                                       becomes a runtime Multica can send agent tasks to
+  multica-register --status            login, daemon and runtime state
+  multica-register --disable           stop the daemon and stop it autostarting
+  multica-register --agent [NAME]      also create an agent on this runtime
+                                       (--model ID; default litellm/nolimitz/coder)
+  multica-register --repo [TARGET]     also add a repo to Multica's registry: a URL, a path,
+                                       the repo you are in, or else every clone under ~/projects
+                                       (--ssh registers the git@host:owner/name.git form)
+  --name NAME                          runtime name (default <owner>-<workspace>, or hostname)
+  Sign-in order: MULTICA_NODE_TOKEN, then a pasted token over SSH/Coder, then the browser.
+
+  multica runtime list                 runtimes and whether they are online
+  multica agent list                   agents and their models
+  multica project list                 projects
+  multica issue create --project ID --assignee NAME --title "..." --description "..."
+                                       creating an assigned issue starts the agent
+  multica issue runs ISSUE_ID          run status, timing and token usage
+  multica issue comment list ISSUE_ID  what the agent reported
+  multica daemon status | logs | restart
+  Not online? run `multica-register --status`, then `multica daemon logs`.
+EOF
+  ;;
+  omp) cat <<'EOF'
+OMP (the coding agent)
+  omp                     start in the current directory
+  omp --list-models       models the gateway offers
+  /login anthropic        inside omp: sign in to Anthropic (no key is stored in the template)
+  Models (LiteLLM gateway, same backend, only thinking differs):
+    nolimitz/coder        thinking off: default for interactive use and Multica agents
+    nolimitz/agent        thinking on: slower and more tokens; for hard or ambiguous tasks
+  Provider and default model live in ~/.omp/agent/models.yml and config.yml.
+EOF
+  ;;
+  coder) cat <<'EOF'
+CODER (run these on your laptop)
+  coder list                              your workspaces and their status
+  coder ssh NAME                          shell into a workspace
+  coder create NAME --template omp-nolimitz
+  coder start|stop NAME                   start or stop a workspace
+  coder templates push omp-nolimitz -d .  publish a template change (from ~/coder-templates/omp-nolimitz)
+  coder dotfiles URL                      re-apply these dotfiles
+  Note: `coder ssh NAME -- cmd` can hang if cmd leaves a daemon running; use an interactive
+  session, or send the daemon's output to a file.
+EOF
+  ;;
+  git) cat <<'EOF'
+GIT ALIASES
+  git co|sw|br|ci|st      checkout, switch, branch, commit, status -sb
+  git last                last commit        git amend    amend without editing the message
+  git undo                undo last commit, keep changes staged
+  git unstage FILE        unstage a file     git tree    graph of all branches
+  gs ga gc gp gl gd gco gb   shell shortcuts for status add commit push log diff checkout branch
+  Defaults: main, pull.rebase, push.autoSetupRemote, fetch.prune. No identity: Coder sets it.
+EOF
+  ;;
+  shell) cat <<'EOF'
+SHELL
+  ~/.shell.local          untracked file sourced last: private paths, tokens, per-host tweaks
+  ll la l  ..  ...        ls and cd shortcuts       ports    listening TCP ports     myip
+  mkcd DIR                make a directory and cd into it
+  One-line hints appear in new shells until ghrepo / multica-register have been run.
+  Update the dotfiles:    git -C ~/dotfiles pull && ~/dotfiles/install.sh
+EOF
+  ;;
+  esac
+}
+
+topics="start repos multica omp coder git shell"
+if [ $# -eq 0 ]; then
+  for t in $topics; do sheet "$t"; printf '\n'; done
+  exit 0
+fi
+case "$1" in
+  -h|--help) sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+case " $topics " in
+  *" $1 "*) sheet "$1" ;;
+  *) printf 'dothelp: unknown topic: %s (try: %s)\n' "$1" "$topics" >&2; exit 1 ;;
+esac
