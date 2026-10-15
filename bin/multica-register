@@ -181,7 +181,16 @@ if daemon_running; then
   say "Daemon already running."
 else
   say "Starting the daemon as '$RUNTIME_NAME'."
-  "${MC[@]}" daemon start || die "daemon did not start (see: multica daemon logs)"
+  # The daemon keeps whatever stdout it was started with open. Send it to a file,
+  # not a pipe, so a caller that captures this script's output (ssh, CI, $(...))
+  # still sees it exit.
+  start_log="$(mktemp)"
+  if "${MC[@]}" daemon start </dev/null >"$start_log" 2>&1; then
+    cat "$start_log"; rm -f "$start_log"
+  else
+    cat "$start_log"; rm -f "$start_log"
+    die "daemon did not start (see: multica daemon logs)"
+  fi
 fi
 touch "$MARKER"
 
