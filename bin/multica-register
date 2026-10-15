@@ -10,8 +10,13 @@
 #   --name NAME      runtime/device name shown in Multica (default: <owner>-<workspace>
 #                    in a Coder workspace, else the hostname)
 #   --repo [TARGET]  also add a git repo to the workspace's repository registry:
-#                    TARGET is a path or URL, default the repo you are in
+#                    TARGET is a path or URL, default the repo you are in or, outside
+#                    one, every repo ghrepo cloned under $GHREPO_DIR (~/projects)
 #   --ssh            with --repo: register the git@host:owner/name.git form of an https origin
+#   --agent [NAME]   also create an agent on this machine's omp runtime, so issues can
+#                    be assigned to it (default name: omp-<runtime name>)
+#   --model ID       with --agent: the agent's model (default litellm/nolimitz/agent,
+#                    or $MULTICA_AGENT_MODEL)
 #   --profile NAME   use a separate multica profile (isolated config and login)
 #
 # Install and connect are the official steps: the install.sh installer, then
@@ -26,6 +31,7 @@ SERVER="${MULTICA_SERVER_URL:-https://multica.nolimitz.io}"
 MARKER="$HOME/.multica-enabled"
 MIN_VERSION="0.4.22"   # first release with the omp runtime
 ACTION=register NAME="" PROFILE="" REPO=0 REPO_TARGET="" SSH_FORM=0
+AGENT=0 AGENT_NAME="" MODEL="${MULTICA_AGENT_MODEL:-litellm/nolimitz/agent}"
 
 die() { printf 'multica-register: %s\n' "$*" >&2; exit 1; }
 say() { printf '%s\n' "$*"; }
@@ -39,7 +45,10 @@ while [ $# -gt 0 ]; do
     --ssh)     SSH_FORM=1 ;;
     --repo)    REPO=1
                if [ $# -gt 1 ] && [ "${2#-}" = "$2" ]; then shift; REPO_TARGET="$1"; fi ;;
-    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --agent)   AGENT=1
+               if [ $# -gt 1 ] && [ "${2#-}" = "$2" ]; then shift; AGENT_NAME="$1"; fi ;;
+    --model)   shift; [ $# -gt 0 ] || die "--model needs a value"; MODEL="$1" ;;
+    -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)         die "unknown argument: $1" ;;
   esac
   shift
@@ -87,11 +96,12 @@ signed_in() {
   case "$out" in *$'\n'User:*|User:*) return 0 ;; *) return 1 ;; esac
 }
 
-# `multica daemon status` prints "Daemon: stopped" or "Daemon: running ...".
+# `multica daemon status` first line is "Daemon: stopped" or "Daemon:      running (...)";
+# the padding differs between CLI versions, so split on whitespace.
 daemon_running() {
-  local line
-  line="$("${MC[@]}" daemon status 2>&1 | head -n 1)"
-  [ "${line#Daemon: running}" != "$line" ]
+  local out
+  out="$("${MC[@]}" daemon status 2>&1)"
+  printf '%s\n' "$out" | awk 'NR == 1 { r = ($1 == "Daemon:" && $2 == "running") } END { exit !r }'
 }
 
 # runtimes_here: runtime rows (provider, status, name) whose name contains this
@@ -112,7 +122,7 @@ show_runtimes() {
 if [ "$ACTION" = status ]; then
   say "Server:  $(config_value server_url)"
   signed_in && "${MC[@]}" auth status 2>&1 | sed -n '2p' | sed 's/^/  /' || say "  not signed in"
-  say "Daemon:  $("${MC[@]}" daemon status 2>&1 | head -n 1 | sed 's/^Daemon: //')"
+  say "Daemon:  $("${MC[@]}" daemon status 2>&1 | head -n 1 | sed -E 's/^Daemon:[[:space:]]*//')"
   say "Autostart marker: $([ -f "$MARKER" ] && echo present || echo absent)"
   say "Runtimes named *$RUNTIME_NAME*:"
   show_runtimes
@@ -202,39 +212,83 @@ say "Runtimes:"
 show_runtimes
 [ "$online" = 1 ] || say "warning: no online runtime yet; check 'multica daemon logs'"
 
+# --- optional: agent ----------------------------------------------------------
+# An agent is what issues get assigned to. Bind one to this machine's omp runtime,
+# with the default model, creating it or fixing its model if it already exists.
+if [ "$AGENT" = 1 ]; then
+  rid="$("${MC[@]}" runtime list --output json 2>/dev/null \
+    | jq -r --arg n "$RUNTIME_NAME" '[.[] | select(.provider == "omp" and (.name | contains($n)))][0].id // empty')"
+  [ -n "$rid" ] || die "no omp runtime named *$RUNTIME_NAME* to attach an agent to"
+  aname="${AGENT_NAME:-omp-$RUNTIME_NAME}"
+  aid="$("${MC[@]}" agent list --output json 2>/dev/null \
+    | jq -r --arg n "$aname" '[.[] | select(.name == $n and .archived_at == null)][0].id // empty')"
+  if [ -n "$aid" ]; then
+    "${MC[@]}" agent update "$aid" --model "$MODEL" --output json >/dev/null \
+      || die "could not set model on agent $aname"
+    say "Agent '$aname' exists; model set to $MODEL."
+  else
+    "${MC[@]}" agent create --name "$aname" --runtime-id "$rid" --model "$MODEL" \
+      --visibility workspace --description "omp on $RUNTIME_NAME" --output json >/dev/null \
+      || die "agent create failed"
+    say "Agent '$aname' created on $RUNTIME_NAME with model $MODEL."
+  fi
+fi
+
 # --- optional: repository registry --------------------------------------------
 if [ "$REPO" = 1 ]; then
-  url=""
+  # URL -> one repo. Path -> that repo. Neither: the repo you are in, or, when you
+  # are not in one, every repo ghrepo cloned under $GHREPO_DIR (default ~/projects).
+  repo_urls=()
+  origin_of() {
+    git -C "$1" rev-parse --show-toplevel >/dev/null 2>&1 || return 1
+    git -C "$1" remote get-url origin 2>/dev/null
+  }
   case "$REPO_TARGET" in
-    *://*|*@*:*) url="$REPO_TARGET" ;;
+    *://*|*@*:*) repo_urls+=("$REPO_TARGET") ;;
+    "")
+      if u="$(origin_of .)"; then
+        repo_urls+=("$u")
+      else
+        root="${GHREPO_DIR:-$HOME/projects}"
+        for d in "$root"/*/; do
+          [ -e "${d}.git" ] || continue
+          u="$(origin_of "$d")" && repo_urls+=("$u")
+        done
+        [ ${#repo_urls[@]} -gt 0 ] || die "not in a git repository and no clones under $root; run ghrepo first"
+        say "Not in a repo; using the ${#repo_urls[@]} repo(s) cloned under $root."
+      fi ;;
     *)
-      dir="${REPO_TARGET:-.}"
-      [ -d "$dir" ] || die "not a directory: $dir"
-      git -C "$dir" rev-parse --show-toplevel >/dev/null 2>&1 || die "$dir is not a git repository"
-      url="$(git -C "$dir" remote get-url origin 2>/dev/null)" || die "$dir has no 'origin' remote"
-      ;;
+      [ -d "$REPO_TARGET" ] || die "not a directory: $REPO_TARGET"
+      u="$(origin_of "$REPO_TARGET")" || die "$REPO_TARGET is not a git repository with an 'origin' remote"
+      repo_urls+=("$u") ;;
   esac
-  # https://host/o/n(.git) -> git@host:o/n.git
-  if [ "$SSH_FORM" = 1 ]; then
-    case "$url" in
-      https://*|http://*) url="$(printf '%s' "${url#*://}" | sed -E 's#^([^/]+)/(.*)$#git@\1:\2#; s#(\.git)?$#.git#')" ;;
-    esac
-  fi
+
   # norm URL: host/owner/name, so ssh and https forms of one repo compare equal.
   norm() {
     printf '%s' "$1" | sed -E '
       s#^[a-z+]+://##; s#^[^@/]+@##; s#:([^0-9])#/\1#; s#^([^/]+):[0-9]+/#\1/#; s#\.git/?$##; s#/$##' \
       | tr '[:upper:]' '[:lower:]'
   }
-  want="$(norm "$url")"
-  existing="$("${MC[@]}" repo list --output json 2>/dev/null | grep -o '"url": *"[^"]*"' | sed -E 's/"url": *"([^"]*)"/\1/')"
-  while IFS= read -r have; do
-    [ -n "$have" ] || continue
-    if [ "$(norm "$have")" = "$want" ]; then
-      say "Repo already registered: $have"
-      exit 0
+  existing="$("${MC[@]}" repo list --output json 2>/dev/null | jq -r '.[].url')"
+  failed=0
+  for url in "${repo_urls[@]}"; do
+    # https://host/o/n(.git) -> git@host:o/n.git
+    if [ "$SSH_FORM" = 1 ]; then
+      case "$url" in
+        https://*|http://*) url="$(printf '%s' "${url#*://}" | sed -E 's#^([^/]+)/(.*)$#git@\1:\2#; s#(\.git)?$#.git#')" ;;
+      esac
     fi
-  done <<< "$existing"
-  say "Registering repo $url"
-  "${MC[@]}" repo add "$url" --output table || die "repo add failed"
+    want="$(norm "$url")"
+    have_it=""
+    while IFS= read -r have; do
+      [ -n "$have" ] && [ "$(norm "$have")" = "$want" ] && { have_it="$have"; break; }
+    done <<< "$existing"
+    if [ -n "$have_it" ]; then
+      say "Repo already registered: $have_it"
+    else
+      say "Registering repo $url"
+      "${MC[@]}" repo add "$url" --output table || { say "repo add failed: $url"; failed=1; }
+    fi
+  done
+  [ "$failed" = 0 ] || exit 1
 fi
