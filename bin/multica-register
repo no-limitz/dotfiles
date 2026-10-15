@@ -55,6 +55,16 @@ while [ $# -gt 0 ]; do
 done
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
+# status and disable only inspect or stop things: never install the CLI for them.
+if [ "$ACTION" != register ] && ! command -v multica >/dev/null 2>&1; then
+  if [ "$ACTION" = status ]; then
+    say "multica CLI is not installed. Run multica-register to install and connect."
+  else
+    rm -f "$MARKER"; say "multica CLI is not installed; nothing to disable."
+  fi
+  exit 0
+fi
+
 # --- CLI ----------------------------------------------------------------------
 # version_ge A B: A >= B for dotted versions.
 version_ge() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" = "$2" ]; }
@@ -85,8 +95,11 @@ RUNTIME_NAME="${NAME:-${MULTICA_AGENT_RUNTIME_NAME:-$default_name}}"
 export MULTICA_AGENT_RUNTIME_NAME="$RUNTIME_NAME" MULTICA_DAEMON_DEVICE_NAME="$RUNTIME_NAME"
 
 # --- helpers ------------------------------------------------------------------
-# config_value KEY: value from `multica config show`, empty if unset.
-config_value() { "${MC[@]}" config show 2>/dev/null | awk -v k="$1:" '$1 == k { print $2 }'; }
+# config_value KEY: value from `multica config show`; empty if unset (shown as "(not set)").
+config_value() {
+  "${MC[@]}" config show 2>/dev/null \
+    | awk -v k="$1:" '$1 == k { $1 = ""; sub(/^ +/, ""); if ($0 !~ /^\(not set\)/) print }'
+}
 
 # `multica auth status` exits 0 even when signed out ("Not authenticated") and
 # prints to stderr as well as stdout, so capture both and look for a "User:" line.
@@ -120,7 +133,7 @@ show_runtimes() {
 
 # --- status / disable ---------------------------------------------------------
 if [ "$ACTION" = status ]; then
-  say "Server:  $(config_value server_url)"
+  say "Server:  $(config_value server_url | sed "s/^\$/(not set)/")"
   signed_in && "${MC[@]}" auth status 2>&1 | sed -n '2p' | sed 's/^/  /' || say "  not signed in"
   say "Daemon:  $("${MC[@]}" daemon status 2>&1 | head -n 1 | sed -E 's/^Daemon:[[:space:]]*//')"
   say "Autostart marker: $([ -f "$MARKER" ] && echo present || echo absent)"
