@@ -4,11 +4,22 @@ add_newline = true
 command_timeout = 500
 
 # Multi-line prompt: directory/git on the first line, arrow + command on the second.
-# $hostname only renders over SSH (ssh_only default), so local shells stay short.
+# Where you are: in a Coder workspace, its name (the hostname there is an opaque
+# pod name); on any other SSH host, the hostname. Local shells show neither.
 format = """
-$hostname$directory$git_branch$git_status$python$nodejs$rust$golang$cmd_duration\
+${env_var.CODER_WORKSPACE_NAME}$hostname$directory$git_branch$git_status$python$nodejs$rust$golang$cmd_duration\
 $line_break\
 $character"""
+
+[env_var.CODER_WORKSPACE_NAME]
+symbol = "🌐 "
+style = "bold purple"
+format = "[$symbol$env_value]($style) "
+
+[hostname]
+ssh_only = true
+# Negated: skipped inside Coder, where the workspace name is shown instead.
+detect_env_vars = ["!CODER_WORKSPACE_NAME"]
 
 [cmd_duration]
 min_time = 3000
