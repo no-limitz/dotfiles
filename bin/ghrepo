@@ -24,8 +24,18 @@ command -v gh >/dev/null 2>&1 || die "gh is not installed"
 if [ -n "${GH_TOKEN:-}${GITHUB_TOKEN:-}" ]; then
   say "Using the token from GH_TOKEN/GITHUB_TOKEN."
 elif ! gh auth status --hostname "$HOST" >/dev/null 2>&1; then
-  say "Not signed in to $HOST. Starting browser (device-code) login..."
-  gh auth login --hostname "$HOST" --git-protocol https --web --skip-ssh-key \
+  say "Not signed in to $HOST."
+  say "Open https://github.com/login/device on any device and enter the code printed below."
+  # A local desktop can open the page itself. Over SSH or in a Coder workspace
+  # there is no browser on this machine, so only the printed URL applies.
+  if [ "$(uname -s)" = "Darwin" ] && [ -z "${SSH_CONNECTION:-}${CODER_WORKSPACE_NAME:-}" ]; then
+    open "https://github.com/login/device" >/dev/null 2>&1 || true
+  fi
+  # stdin is detached on purpose: with a terminal on stdin, gh stops to ask
+  # "Authenticate Git...? (Y/n)" and "Press Enter to open a browser", neither of
+  # which helps here. Without one it prints the code and waits for approval.
+  # Git credentials are set up below with `gh auth setup-git`.
+  gh auth login --hostname "$HOST" --git-protocol https --web --skip-ssh-key </dev/null \
     || die "login did not complete"
 fi
 gh auth status --hostname "$HOST" >/dev/null 2>&1 || die "still not signed in"
