@@ -73,7 +73,12 @@ cli_version() { multica version 2>/dev/null | awk 'NR == 1 { print $2 }'; }
 if ! command -v multica >/dev/null 2>&1; then
   say "multica CLI not found; installing."
   # Official installer (uses Homebrew when present, else a release binary).
-  curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh | bash \
+  # The binary goes in ~/.local/bin, not the installer's default /usr/local/bin:
+  # on a Coder workspace only the home volume survives a restart, and a CLI lost
+  # there leaves ~/.multica-enabled pointing the autostart at nothing.
+  mkdir -p "$HOME/.local/bin"
+  curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh \
+    | MULTICA_BIN_DIR="$HOME/.local/bin" bash \
     || die "install failed"
   export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
   command -v multica >/dev/null 2>&1 || die "multica is still not on PATH; open a new shell and re-run"
