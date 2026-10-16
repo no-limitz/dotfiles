@@ -95,7 +95,8 @@ SHELL
   mkcd DIR                make a directory and cd into it
   Each new terminal prints one line pointing here (once; nested shells stay quiet).
   One-line hints appear in new shells until ghrepo / multica-register have been run.
-  Update the dotfiles:    git -C ~/dotfiles pull && ~/dotfiles/install.sh
+  Update the dotfiles:    git -C ~/.config/coderv2/dotfiles pull      (Coder workspace)
+                          git -C ~/dotfiles pull && ~/dotfiles/install.sh   (elsewhere)
 EOF
   ;;
   esac
