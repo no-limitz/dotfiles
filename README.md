@@ -81,6 +81,11 @@ updates the CLI if needed). `--agent` defaults to `litellm/nolimitz/coder` (thin
 registers the repo you are in, or else every repo `ghrepo` cloned under `~/projects`; repos already in the
 registry, in ssh or https form, are skipped. Until it has run, new shells print a one-line hint.
 
+The daemon registers a runtime for every agent CLI it finds, so `copilot` (in the Coder image) is hidden by
+default: only the LiteLLM gateway models are offered. `MULTICA_DISABLE_AGENTS="copilot codex"` hides a different
+set, and `MULTICA_DISABLE_AGENTS=""` hides nothing. It works by pointing `MULTICA_<NAME>_PATH` at a path that
+does not exist, and the `omp-nolimitz` Coder template sets `MULTICA_COPILOT_PATH` for the daemon autostart.
+
 ## dothelp: cheat sheet
 
 ```bash

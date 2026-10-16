@@ -41,6 +41,8 @@ MULTICA: multica-register   (server: https://multica.nolimitz.io)
                                        (--ssh registers the git@host:owner/name.git form)
   --name NAME                          runtime name (default <owner>-<workspace>, or hostname)
   Sign-in order: MULTICA_NODE_TOKEN, then a pasted token over SSH/Coder, then the browser.
+  Hidden agents: copilot is not offered as a runtime. MULTICA_DISABLE_AGENTS="copilot codex"
+  hides others; "" hides none. (Sets MULTICA_<NAME>_PATH to a nonexistent path.)
 
   multica runtime list                 runtimes and whether they are online
   multica agent list                   agents and their models

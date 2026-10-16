@@ -94,6 +94,15 @@ fi
 RUNTIME_NAME="${NAME:-${MULTICA_AGENT_RUNTIME_NAME:-$default_name}}"
 export MULTICA_AGENT_RUNTIME_NAME="$RUNTIME_NAME" MULTICA_DAEMON_DEVICE_NAME="$RUNTIME_NAME"
 
+# Agent CLIs the daemon must not register as runtimes (it registers every one it finds on
+# PATH). Default: copilot, so Multica only runs agents on the LiteLLM gateway models.
+# MULTICA_DISABLE_AGENTS="" turns this off; a space-separated list replaces it. Each name
+# NAME is hidden by pointing MULTICA_NAME_PATH at a path that does not exist.
+DISABLE_AGENTS="${MULTICA_DISABLE_AGENTS-copilot}"
+for _a in $DISABLE_AGENTS; do
+  export "MULTICA_$(printf '%s' "$_a" | tr '[:lower:]' '[:upper:]')_PATH=/nonexistent/$_a"
+done
+
 # --- helpers ------------------------------------------------------------------
 # config_value KEY: value from `multica config show`; empty if unset (shown as "(not set)").
 config_value() {
@@ -154,9 +163,10 @@ fi
 # `multica setup self-host` below starts it, so check this before connecting.
 found=""
 for c in omp claude codex opencode copilot pi; do
+  case " $DISABLE_AGENTS " in *" $c "*) continue ;; esac
   command -v "$c" >/dev/null 2>&1 && found="$found $c"
 done
-[ -n "$found" ] || die "no agent CLI on PATH (looked for omp claude codex opencode copilot pi); install one first"
+[ -n "$found" ] || die "no usable agent CLI on PATH (looked for omp claude codex opencode copilot pi, minus disabled: ${DISABLE_AGENTS:-none}); install one first"
 say "Agents on PATH:$found"
 case " $found " in
   *" omp "*)
