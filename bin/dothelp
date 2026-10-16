@@ -93,6 +93,7 @@ SHELL
   ~/.shell.local          untracked file sourced last: private paths, tokens, per-host tweaks
   ll la l  ..  ...        ls and cd shortcuts       ports    listening TCP ports     myip
   mkcd DIR                make a directory and cd into it
+  Each new terminal prints one line pointing here (once; nested shells stay quiet).
   One-line hints appear in new shells until ghrepo / multica-register have been run.
   Update the dotfiles:    git -C ~/dotfiles pull && ~/dotfiles/install.sh
 EOF

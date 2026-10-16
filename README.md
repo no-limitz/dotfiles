@@ -95,3 +95,6 @@ dothelp multica    # one topic: start repos multica omp coder git shell
 
 Plain text in `bin/dothelp`, so it works offline on any new workspace once the dotfiles are applied.
 Update it when a helper gains or loses an option.
+
+Every new terminal prints one line naming the main helpers and pointing at `dothelp`, so they stay visible after the
+GitHub and Multica hints go quiet. `DOTFILES_BANNER_SHOWN` is exported, so shells started inside it print nothing.

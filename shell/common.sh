@@ -62,6 +62,14 @@ fi
 # --- functions ----------------------------------------------------------------
 mkcd() { mkdir -p -- "$1" && cd -- "$1"; }
 
+# --- commands banner -----------------------------------------------------------
+# One line per terminal, always, so the helpers are never out of sight once the
+# hints below go quiet. Exported so nested shells stay quiet.
+if [ -z "${DOTFILES_BANNER_SHOWN:-}" ] && command -v dothelp >/dev/null 2>&1; then
+  export DOTFILES_BANNER_SHOWN=1
+  printf 'Workspace commands: ghrepo · multica-register · omp. Run `dothelp` for the full list.\n'
+fi
+
 # --- GitHub sign-in hint -------------------------------------------------------
 # One line, only while there is no GitHub credential. File checks only: `gh auth
 # status` calls the API and would slow every new shell. Exported so nested shells
